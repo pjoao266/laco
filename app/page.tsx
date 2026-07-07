@@ -342,7 +342,7 @@ export default function LacoHome() {
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-400"><Camera className="w-12 h-12 mb-4 opacity-50" /><p>Nenhuma mídia no seu Laço.</p></div>
                   ) : (
                     <>
-                      <div className="absolute top-0 inset-x-0 p-4 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-0 inset-x-0 p-4 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button onClick={() => setMomentsOrder(prev => prev === 'cronologica' ? 'aleatoria' : 'cronologica')} className="p-2 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full text-white transition">{momentsOrder === 'cronologica' ? <Clock className="w-4 h-4" /> : <Shuffle className="w-4 h-4" />}</button>
                         <button onClick={() => setIsPlayingMoments(!isPlayingMoments)} className="px-4 py-2 bg-[#E81633] hover:bg-[#c2122a] rounded-full text-white font-bold flex items-center shadow-lg transition">{isPlayingMoments ? <><Pause className="w-4 h-4 mr-2" /> Pausar</> : <><Play className="w-4 h-4 mr-2" /> Tocar</>}</button>
                       </div>
@@ -361,8 +361,8 @@ export default function LacoHome() {
                         <p className="text-gray-300 text-sm line-clamp-2">{allMediaFlat[momentIndex]?.desc}</p>
                       </div>
 
-                      <button onClick={() => { setIsPlayingMoments(false); setMomentIndex(prev => prev === 0 ? allMediaFlat.length - 1 : prev - 1); }} className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/40 hover:bg-black/70 text-white rounded-full z-20 opacity-0 group-hover:opacity-100 transition"><ChevronLeft className="w-6 h-6" /></button>
-                      <button onClick={() => { setIsPlayingMoments(false); setMomentIndex(prev => (prev + 1) % allMediaFlat.length); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/40 hover:bg-black/70 text-white rounded-full z-20 opacity-0 group-hover:opacity-100 transition"><ChevronRight className="w-6 h-6" /></button>
+                      <button onClick={() => { setIsPlayingMoments(false); setMomentIndex(prev => prev === 0 ? allMediaFlat.length - 1 : prev - 1); }} className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/40 hover:bg-black/70 text-white rounded-full z-20 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"><ChevronLeft className="w-6 h-6" /></button>
+                      <button onClick={() => { setIsPlayingMoments(false); setMomentIndex(prev => (prev + 1) % allMediaFlat.length); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/40 hover:bg-black/70 text-white rounded-full z-20 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"><ChevronRight className="w-6 h-6" /></button>
                       
                       <div className="absolute top-2 inset-x-2 z-20 flex space-x-1 opacity-60">
                         {allMediaFlat.map((_, i) => <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i === momentIndex ? 'bg-white' : 'bg-white/30'}`} />)}
