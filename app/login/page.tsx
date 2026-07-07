@@ -13,7 +13,7 @@ export default function Login() {
       if (event === 'SIGNED_IN' && session?.user) {
         const user = session.user
         
-        // 1. Resgata o convite salvo no navegador (mesmo que a URL perca o ID após o Google)
+        // Resgata o convite salvo no navegador 
         const savedInviteId = localStorage.getItem('invite_laco_id')
 
         if (savedInviteId) {
@@ -49,7 +49,7 @@ export default function Login() {
     setErroDetalhado('')
 
     try {
-      // 2. Salva o convite antes de redirecionar para o Google!
+      // Salva o convite antes de redirecionar para o Google
       const params = new URLSearchParams(window.location.search)
       const inviteLacoId = params.get('invite')
       if (inviteLacoId) {
@@ -80,7 +80,7 @@ export default function Login() {
         {erroDetalhado && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg mb-6">{erroDetalhado}</div>}
 
         <button onClick={handleGoogleAuth} disabled={loading} className="w-full bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition shadow-sm disabled:opacity-50">
-          {loading ? 'Conectando...' : 'Entrar ou Cadastrar'}
+          {loading ? 'Conectando...' : 'Entrar ou Cadastrar com Google'}
         </button>
       </div>
     </div>

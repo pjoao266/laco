@@ -1,13 +1,9 @@
-// app/invite/page.tsx
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { supabase } from '@/utils/supabase'
 import { Heart, Loader2 } from 'lucide-react'
-
-// Helper para detetar a foto de fundo (apenas para fallback visual, não carrega a imagem real)
-const isVideo = (url: string) => /\.(mp4|webm|ogg|mov)$/i.test(url);
 
 export default function Invite() {
   const router = useRouter();
@@ -28,7 +24,6 @@ export default function Invite() {
           return;
         }
 
-        // 1. Busca os dados do Laço
         const { data: laco, error: lacoError } = await supabase
           .from('lacos')
           .select('*')
@@ -42,17 +37,14 @@ export default function Invite() {
 
         setLacoData(laco);
 
-        // 2. Busca o nome de quem convidou (o user_creator_id)
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if(userError || !userData?.user) {
             router.push(`/login?invite=${lacoId}`);
             return;
         }
         
-        // Vamos supor que temos uma tabela de utilizadores para buscar o nome real.
-        // Se não tiver, vamos usar o email ou uma string genérica.
-        // Aqui, para simplificar o código, vamos usar uma string genérica.
-        setInviterName('A tua parceria');
+        // Tentativa de puxar nome, fallback para algo carinhoso em PT-BR
+        setInviterName('Seu amor');
 
         setIsLoading(false);
       } catch (error: any) {
@@ -67,9 +59,8 @@ export default function Invite() {
     setErrorMsg('');
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Utilizador não autenticado.');
+      if (!user) throw new Error('Usuário não autenticado.');
 
-      // Vincula a pessoa convidada à coluna user_invited_id da tabela lacos
       const { error } = await supabase
         .from('lacos')
         .update({ user_invited_id: user.id })
@@ -91,7 +82,6 @@ export default function Invite() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center p-4 transition-colors relative overflow-hidden">
       
-      {/* Efeito de fundo desfocado bonito - Otimizado para Next/Image */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#E81633]/20 blur-[100px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[100px] rounded-full pointer-events-none" />
 
@@ -105,10 +95,10 @@ export default function Invite() {
 
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3 leading-tight">
-            Olá, <span className="text-[#E81633] font-extrabold">{inviterName}</span> convidou-te!
+            Olá! <span className="text-[#E81633] font-extrabold">{inviterName}</span> te convidou.
           </h1>
           <p className="text-gray-600 dark:text-gray-300 text-lg leading-relaxed whitespace-pre-line">
-            ...pra esse laço de memorias entre vcs, entre pra reviver e colecionar memorias.
+            ...pra esse laço de memórias entre vcs. Entre pra reviver e colecionar momentos especiais juntos.
           </p>
         </div>
 
@@ -119,8 +109,6 @@ export default function Invite() {
         )}
 
         <div className="space-y-6">
-            
-          {/* Caixa do Espaço (Preview) - Otimizado para Next/Image */}
           <div className="bg-gray-100 dark:bg-slate-900 rounded-3xl p-6 border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-5 text-left transition relative overflow-hidden group">
             {lacoData.background_img_link ? (
                 <Image src={lacoData.background_img_link} alt="Cofre de Memórias" fill className="object-cover opacity-20 dark:opacity-[0.15] scale-110 blur-[1px]" sizes="500px" />
@@ -139,7 +127,6 @@ export default function Invite() {
             </div>
           </div>
 
-          {/* Botão de Submit */}
           <button 
             onClick={handleJoinLaco} 
             disabled={saving}
@@ -147,7 +134,7 @@ export default function Invite() {
           >
             {saving ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> A aceitar o laço...
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Entrando no laço...
               </>
             ) : (
               'Entrar no Nosso Laço'

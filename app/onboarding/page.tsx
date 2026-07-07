@@ -14,7 +14,7 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Verifica se o utilizador está logado, se não, manda pro login
+  // Verifica se o usuário está logado, se não, manda pro login
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -25,7 +25,6 @@ export default function Onboarding() {
     checkUser();
   }, [router]);
 
-  // Função para fazer o upload da imagem de fundo
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!e.target.files || e.target.files.length === 0) return;
@@ -52,7 +51,6 @@ export default function Onboarding() {
     }
   };
 
-  // Função para salvar o Laço no banco de dados
   const handleCreateLaco = async () => {
     if (!shipName.trim()) {
       setErrorMsg('O Nome do Casal é obrigatório para começar!');
@@ -64,7 +62,7 @@ export default function Onboarding() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Utilizador não autenticado.');
+      if (!user) throw new Error('Usuário não autenticado.');
 
       const { error } = await supabase
         .from('lacos')
@@ -73,13 +71,10 @@ export default function Onboarding() {
             ship_name: shipName,
             background_img_link: bgImgUrl,
             user_creator_id: user.id
-            // O user_invited_id fica vazio até alguém usar o link de convite!
           }
         ]);
 
       if (error) throw error;
-
-      // Tudo certo? Manda para a página principal!
       router.push('/');
     } catch (error: any) {
       setErrorMsg('Erro ao criar o Laço: ' + error.message);
@@ -89,8 +84,6 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center p-4 transition-colors relative overflow-hidden">
-      
-      {/* Efeito de fundo desfocado bonito para a tela de onboarding */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#E81633]/20 blur-[100px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[100px] rounded-full pointer-events-none" />
 
@@ -104,10 +97,10 @@ export default function Onboarding() {
 
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center justify-center">
-            Criar o vosso Laço <Sparkles className="w-6 h-6 ml-2 text-amber-400" />
+            Criar o espaço de vocês <Sparkles className="w-6 h-6 ml-2 text-amber-400" />
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
-            Configurem o vosso espaço especial. Depois, poderá convidar a sua dupla através de um link!
+            Configure o cantinho de vocês. Depois, você poderá convidar seu amor através de um link!
           </p>
         </div>
 
@@ -118,7 +111,6 @@ export default function Onboarding() {
         )}
 
         <div className="space-y-6">
-          {/* Input do Nome */}
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
               Nome do Casal / Título do Espaço
@@ -132,7 +124,6 @@ export default function Onboarding() {
             />
           </div>
 
-          {/* Upload de Imagem */}
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
               Foto de Fundo (Opcional)
@@ -149,16 +140,15 @@ export default function Onboarding() {
                 <div className="flex flex-col items-center justify-center p-6 text-center">
                   <Upload className="w-8 h-8 text-gray-400 mb-3 group-hover:text-[#E81633] transition" />
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    {uploading ? 'A preparar imagem...' : 'Clique para escolher uma foto'}
+                    {uploading ? 'Preparando imagem...' : 'Clique para escolher uma foto'}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPG até 5MB</p>
+                  <p className="text-xs text-gray-400 mt-1">PNG ou JPG até 5MB</p>
                 </div>
               )}
               <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
             </label>
           </div>
 
-          {/* Botão de Submit */}
           <button 
             onClick={handleCreateLaco} 
             disabled={saving || uploading}
@@ -166,10 +156,10 @@ export default function Onboarding() {
           >
             {saving ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> A criar espaço...
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Criando espaço...
               </>
             ) : (
-              'Começar o nosso Laço'
+              'Começar nosso Laço'
             )}
           </button>
         </div>

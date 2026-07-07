@@ -31,6 +31,7 @@ export default function LacoHome() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [lacoData, setLacoData] = useState<any>(null);
+  const [partnerName, setPartnerName] = useState<string>('');
   const [events, setEvents] = useState<any[]>([]);
   const [dbCategories, setDbCategories] = useState<any[]>([]);
 
@@ -69,11 +70,18 @@ export default function LacoHome() {
       setShipName(laco.ship_name || '');
       setBgImgUrl(laco.background_img_link || '');
 
+      // Buscar nome da parceria se as duas vagas estiverem preenchidas
+      if (laco.user_creator_id && laco.user_invited_id) {
+        const partnerId = user.id === laco.user_creator_id ? laco.user_invited_id : laco.user_creator_id;
+        const { data: profile } = await supabase.from('profiles').select('full_name, name').eq('id', partnerId).maybeSingle();
+        if (profile) setPartnerName(profile.full_name || profile.name);
+      }
+
       const { data: catDataDb } = await supabase.from('event_categories').select('*');
       if (catDataDb) setDbCategories(catDataDb);
 
       const { data: dbEvents } = await supabase.from('timeline_events').select(`id, laco_id, event_date, title, description, image_url, media_urls, category_id, event_categories (name)`);
-      
+
       if (dbEvents) {
         const mappedEvents = dbEvents.filter(e => e.laco_id === laco.id || !e.laco_id).map((e: any) => {
           const catData = Array.isArray(e.event_categories) ? e.event_categories[0] : e.event_categories;
@@ -124,7 +132,7 @@ export default function LacoHome() {
   const handleSaveEvent = async () => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return alert('Sessão expirada. Faça login novamente.');
-    if (!eventTitle || !eventDate || !eventCatId) return alert('¡Título, Data e Categoria são obrigatórios!');
+    if (!eventTitle || !eventDate || !eventCatId) return alert('Título, Data e Categoria são obrigatórios!');
 
     const payload = {
       laco_id: lacoData.id, title: eventTitle, description: eventDesc,
@@ -141,7 +149,7 @@ export default function LacoHome() {
   };
 
   const handleDeleteEvent = async () => {
-    if (!selectedEvent || !window.confirm("Certeza que deseja excluir esta memória?")) return;
+    if (!selectedEvent || !window.confirm("Tem certeza de que deseja excluir esta memória?")) return;
     await supabase.from('timeline_events').delete().eq('id', selectedEvent.id);
     setIsEditingEvent(false); setSelectedEvent(null); carregarDados();
   };
@@ -188,38 +196,65 @@ export default function LacoHome() {
     return () => clearInterval(interval);
   }, [isPlayingMoments, viewMode, allMediaFlat.length]);
 
+  // LÓGICA DE MESES E ANOS CORRIGIDA E PRECISA
   const { pastMilestones, futureMilestones } = useMemo(() => {
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Zera as horas para comparar apenas datas
+
     const past: any[] = [];
     const future: any[] = [];
     
+    const formatDuration = (m: number) => {
+       if (m === 0) return 'O grande dia';
+       const y = Math.floor(m / 12);
+       const mo = m % 12;
+       if (y > 0 && mo > 0) return `${y} ano${y>1?'s':''} e ${mo} mês${mo>1?'es':''}`;
+       if (y > 0) return `${y} ano${y>1?'s':''}`;
+       return `${mo} mês${mo>1?'es':''}`;
+    };
+
     events.forEach(event => {
-      const eDate = new Date(event.date + 'T12:00:00');
+      const eDate = new Date(event.date + 'T00:00:00');
       if (eDate > today) return; 
 
-      const yearsDiff = today.getFullYear() - eDate.getFullYear();
-      const thisYearAnniversary = new Date(eDate);
-      thisYearAnniversary.setFullYear(today.getFullYear());
-      
-      const diffDays = Math.ceil((thisYearAnniversary.getTime() - today.getTime()) / (1000 * 3600 * 24));
-      let label = `${yearsDiff} ano${yearsDiff > 1 ? 's' : ''}`;
-
-      if (yearsDiff === 0) {
-        const monthsDiff = today.getMonth() - eDate.getMonth() + (12 * (today.getFullYear() - eDate.getFullYear()));
-        if(monthsDiff <= 0) return; 
-        label = `${monthsDiff} mês${monthsDiff > 1 ? 'es' : ''}`;
-        thisYearAnniversary.setFullYear(eDate.getFullYear());
-        thisYearAnniversary.setMonth(eDate.getMonth() + monthsDiff);
+      // Próximo mesversário/aniversário
+      let nextMilestoneDate = new Date(eDate);
+      nextMilestoneDate.setFullYear(today.getFullYear());
+      nextMilestoneDate.setMonth(today.getMonth());
+      if (nextMilestoneDate < today) {
+          nextMilestoneDate.setMonth(nextMilestoneDate.getMonth() + 1);
       }
 
-      const m = { ...event, anniversaryDate: thisYearAnniversary, diffDays, label };
-      if (diffDays < 0) past.push(m);
-      else future.push(m);
+      let totalMonthsNext = (nextMilestoneDate.getFullYear() - eDate.getFullYear()) * 12 + nextMilestoneDate.getMonth() - eDate.getMonth();
+      
+      let pastMilestoneDate = new Date(nextMilestoneDate);
+      pastMilestoneDate.setMonth(pastMilestoneDate.getMonth() - 1);
+      let totalMonthsPast = totalMonthsNext - 1;
+
+      const diffDaysNext = Math.ceil((nextMilestoneDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+      const diffDaysPast = Math.ceil((today.getTime() - pastMilestoneDate.getTime()) / (1000 * 3600 * 24));
+
+      // Algoritmo de Prioridade: Checa se é Ano Fechado e está no raio de +/- 20 dias
+      const isPriorityPast = (totalMonthsPast % 12 === 0 && diffDaysPast <= 20);
+      const isPriorityNext = (totalMonthsNext % 12 === 0 && diffDaysNext <= 20);
+
+      // Popula Passados
+      if (totalMonthsPast > 0 || (totalMonthsPast === 0 && eDate.getTime() !== today.getTime())) {
+          past.push({ ...event, anniversaryDate: pastMilestoneDate, diffDays: -diffDaysPast, label: formatDuration(totalMonthsPast), isPriority: isPriorityPast });
+      }
+      // Popula Futuros
+      future.push({ ...event, anniversaryDate: nextMilestoneDate, diffDays: diffDaysNext, label: formatDuration(totalMonthsNext), isPriority: isPriorityNext });
     });
 
     return {
-      pastMilestones: past.sort((a, b) => Math.abs(a.diffDays) - Math.abs(b.diffDays)).slice(0, 3),
-      futureMilestones: future.sort((a, b) => a.diffDays - b.diffDays).slice(0, 4)
+      pastMilestones: past.sort((a, b) => {
+        if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
+        return Math.abs(a.diffDays) - Math.abs(b.diffDays);
+      }).slice(0, 5),
+      futureMilestones: future.sort((a, b) => {
+        if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
+        return a.diffDays - b.diffDays;
+      }).slice(0, 5)
     };
   }, [events]);
 
@@ -274,12 +309,12 @@ export default function LacoHome() {
                 <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-600 before:to-transparent">
                   {filteredEvents.map((event) => {
                     const catData = CATEGORIES.find(c => c.id === event.categoryId) || CATEGORIES[0];
-                    const Icon = catData.icon || Heart; // <--- ADICIONAMOS ISTO AQUI
+                    const Icon = catData.icon || Heart;
                     const dateObj = new Date(event.date + 'T12:00:00');
                     return (
                       <div key={event.id} onClick={() => { setSelectedEvent({...event, catData}); setIsEditingEvent(false); }} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group cursor-pointer">
                         <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${catData.color} absolute left-0 md:left-1/2 md:-ml-5 z-10 transition-transform group-hover:scale-110`}>
-                          <Icon className="w-4 h-4" /> {/* <--- USAMOS O Icon SEGURO AQUI */}
+                          <Icon className="w-4 h-4" />
                         </div>
                         <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border border-gray-100 dark:border-slate-700/50 bg-gray-50 dark:bg-slate-700/30 hover:bg-white dark:hover:bg-slate-700 transition">
                           {event.media_urls && event.media_urls.length > 0 && (
@@ -300,7 +335,7 @@ export default function LacoHome() {
                 </div>
               )}
 
-              {/* VISTA 2: MOMENTOS (Com Fade-in entre as fotos) */}
+              {/* VISTA 2: MOMENTOS */}
               {viewMode === 'momentos' && (
                 <div className="w-full h-[70vh] rounded-3xl overflow-hidden relative bg-black flex flex-col group">
                   {allMediaFlat.length === 0 ? (
@@ -312,7 +347,6 @@ export default function LacoHome() {
                         <button onClick={() => setIsPlayingMoments(!isPlayingMoments)} className="px-4 py-2 bg-[#E81633] hover:bg-[#c2122a] rounded-full text-white font-bold flex items-center shadow-lg transition">{isPlayingMoments ? <><Pause className="w-4 h-4 mr-2" /> Pausar</> : <><Play className="w-4 h-4 mr-2" /> Tocar</>}</button>
                       </div>
 
-                      {/* Transição Suave Aqui usando "key" baseada no indice */}
                       <div key={momentIndex} className="flex-1 relative w-full h-full animate-in fade-in duration-500">
                         {isVideo(allMediaFlat[momentIndex]?.url) ? (
                           <video src={allMediaFlat[momentIndex]?.url} controls={!isPlayingMoments} autoPlay={isPlayingMoments} loop muted={isPlayingMoments} className="w-full h-full object-contain" />
@@ -338,7 +372,7 @@ export default function LacoHome() {
                 </div>
               )}
               
-              {/* VISTA 3: CALENDÁRIO COMPLETO E FUNCIONAL */}
+              {/* VISTA 3: CALENDÁRIO */}
               {viewMode === 'calendar' && (
                 <div className="animate-in fade-in duration-300">
                   <div className="flex items-center justify-between mb-6">
@@ -379,11 +413,11 @@ export default function LacoHome() {
             </div>
           </div>
 
-          {/* CAIXA LATERAL DIVIDIDA: Passados e Futuros */}
+          {/* CAIXA LATERAL - COM SCROLL INDEPENDENTE */}
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 sticky top-24 space-y-8">
+            {/* O max-h-[calc(100vh-7rem)] e overflow-y-auto ativam o scroll isolado nesta caixa */}
+            <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto scrollbar-hide space-y-8">
               
-              {/* Secção Próximos Eventos */}
               <div>
                 <div className="flex items-center mb-4">
                   <div className="p-2 bg-pink-50 dark:bg-pink-900/20 rounded-xl mr-3"><Gift className="w-5 h-5 text-pink-500" /></div>
@@ -392,10 +426,10 @@ export default function LacoHome() {
                 <div className="space-y-4">
                   {futureMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários futuros.</p> : futureMilestones.map((m, i) => {
                     const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
-                    const Icon = catData.icon || Heart; // <--- ADICIONAMOS ISTO AQUI
+                    const Icon = catData.icon || Heart;
                     return (
-                      <div key={i} className="flex items-start p-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div> 
+                      <div key={i} onClick={() => { setSelectedEvent({...m, catData}); setIsEditingEvent(false); }} className="flex items-start cursor-pointer p-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div>
                         <div>
                           <p className="text-xs font-bold text-[#E81633] uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
@@ -407,7 +441,6 @@ export default function LacoHome() {
                 </div>
               </div>
 
-              {/* Secção Eventos Passados */}
               <div>
                 <div className="flex items-center mb-4">
                   <div className="p-2 bg-gray-100 dark:bg-slate-700 rounded-xl mr-3"><Clock className="w-5 h-5 text-gray-500" /></div>
@@ -416,14 +449,14 @@ export default function LacoHome() {
                 <div className="space-y-4">
                   {pastMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários passados.</p> : pastMilestones.map((m, i) => {
                     const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
-                    const Icon = catData.icon || Heart; // <--- ADICIONAMOS ISTO AQUI
+                    const Icon = catData.icon || Heart;
                     return (
-                      <div key={i} className="flex items-start p-2 rounded-2xl opacity-70 hover:opacity-100 transition">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div> {/* <--- USAMOS O Icon AQUI */}
+                      <div key={i} onClick={() => { setSelectedEvent({...m, catData}); setIsEditingEvent(false); }} className="flex items-start cursor-pointer p-2 rounded-2xl opacity-70 hover:opacity-100 transition">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div>
                         <div>
                           <p className="text-xs font-bold text-gray-500 uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
-                          <p className="text-xs text-gray-500 mt-1">Passou há {Math.abs(m.diffDays)} dias</p>
+                          <p className="text-xs text-gray-500 mt-1">Há {Math.abs(m.diffDays)} dias</p>
                         </div>
                       </div>
                     )
@@ -440,10 +473,10 @@ export default function LacoHome() {
         <Plus className="w-6 h-6" />
       </button>
 
-      {/* MODAL 1: CRIAR / EDITAR (Texto claro/escuro arranjado) */}
+      {/* MODAL 1: CRIAR / EDITAR */}
       {(isNewEventOpen || isEditingEvent) && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl p-6 relative border border-transparent dark:border-slate-700 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl p-6 relative border border-transparent dark:border-slate-700 max-h-[90vh] overflow-y-auto scrollbar-hide">
             <button onClick={() => {setIsNewEventOpen(false); setIsEditingEvent(false)}} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-full"><X className="w-5 h-5" /></button>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">{isEditingEvent ? 'Editar Memória' : 'Nova Memória'}</h2>
             
@@ -471,16 +504,16 @@ export default function LacoHome() {
               
               <div>
                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Fotos & Vídeos</label>
-                <div className="flex overflow-x-auto pb-2 space-x-2 snap-x">
+                <div className="flex overflow-x-auto pb-2 space-x-2 snap-x scrollbar-hide">
                   {eventMediaUrls.map((url, idx) => (
                     <div key={idx} className="relative w-24 h-24 shrink-0 rounded-xl overflow-hidden snap-start border border-gray-200 dark:border-slate-700 group">
-                      {isVideo(url) ? <video src={url} className="w-full h-full object-cover" /> : <Image src={`${url}?width=200&quality=60`} alt="Midia" fill className="object-cover" sizes="100px" />}
+                      {isVideo(url) ? <video src={url} className="w-full h-full object-cover" /> : <Image src={`${url}?width=200&quality=60`} alt="Mídia" fill className="object-cover" sizes="100px" />}
                       <button onClick={() => removeMedia(idx)} className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition"><X className="w-3 h-3" /></button>
                     </div>
                   ))}
                   <label className="w-24 h-24 shrink-0 border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition snap-start text-gray-400 dark:hover:text-white">
                     <Upload className="w-6 h-6 mb-1" />
-                    <span className="text-[10px] text-center px-1">{uploading ? 'A enviar...' : 'Adicionar Mídia'}</span>
+                    <span className="text-[10px] text-center px-1">{uploading ? 'Enviando...' : 'Adicionar Mídia'}</span>
                     <input type="file" multiple accept="image/*,video/*" onChange={e => handleStorageUpload(e, 'event')} className="hidden" disabled={uploading} />
                   </label>
                 </div>
@@ -488,14 +521,14 @@ export default function LacoHome() {
 
               <div className="flex space-x-2 mt-4 pt-2 border-t border-gray-100 dark:border-slate-700">
                 {isEditingEvent && <button onClick={handleDeleteEvent} className="w-1/4 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center transition hover:bg-red-100 dark:hover:bg-red-900/40"><Trash2 className="w-5 h-5" /></button>}
-                <button onClick={handleSaveEvent} className="flex-1 py-3 bg-[#E81633] text-white rounded-xl font-bold flex items-center justify-center hover:bg-[#c2122a] transition"><Save className="w-4 h-4 mr-2" /> {isEditingEvent ? 'Salvar Edição' : 'Publicar'}</button>
+                <button onClick={handleSaveEvent} className="flex-1 py-3 bg-[#E81633] text-white rounded-xl font-bold flex items-center justify-center hover:bg-[#c2122a] transition"><Save className="w-4 h-4 mr-2" /> {isEditingEvent ? 'Salvar Alterações' : 'Publicar'}</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL 2: VISUALIZAÇÃO DE EVENTO (Texto claro/escuro arranjado) */}
+      {/* MODAL 2: VISUALIZAÇÃO DE EVENTO */}
       {selectedEvent && !isEditingEvent && (
         <div onClick={() => setSelectedEvent(null)} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in cursor-pointer">
           <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative border border-transparent dark:border-slate-700 cursor-default max-h-[90vh] overflow-y-auto group/modal">
@@ -509,8 +542,7 @@ export default function LacoHome() {
                     <video src={selectedEvent.media_urls[momentIndex % selectedEvent.media_urls.length]} controls className="w-full h-full object-contain" />
                   ) : (
                     <>
-                      <Image src={`${selectedEvent.media_urls[momentIndex % selectedEvent.media_urls.length]}?width=100`} alt="Fundo" fill className="object-cover blur-2xl opacity-40 scale-110" sizes="500px" />
-                      {/* Otimização pesada aqui: carrega rápido e em qualidade alta */}
+                      <Image src={`${selectedEvent.media_urls[momentIndex % selectedEvent.media_urls.length]}?width=100`} alt="Plano de fundo" fill className="object-cover blur-2xl opacity-40 scale-110" sizes="500px" />
                       <Image src={`${selectedEvent.media_urls[momentIndex % selectedEvent.media_urls.length]}?width=800&quality=80`} alt={selectedEvent.title} fill className="object-contain z-10 animate-in fade-in" sizes="(max-width: 768px) 100vw, 500px" key={momentIndex} />
                     </>
                   )}
@@ -546,7 +578,7 @@ export default function LacoHome() {
         </div>
       )}
 
-      {/* MODAL 3: CONFIGURAÇÕES */}
+      {/* MODAL 3: CONFIGURAÇÕES COM CHECAGEM DE PARCEIRO */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md p-6 relative border border-gray-100 dark:border-slate-700">
@@ -558,17 +590,31 @@ export default function LacoHome() {
                  <input type="text" value={shipName} onChange={e => setShipName(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-[#E81633]" />
                </div>
                <div>
-                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Fundo do App</label>
+                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Plano de fundo do App</label>
                  <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 relative overflow-hidden group">
-                   {bgImgUrl ? <Image src={`${bgImgUrl}?width=400`} alt="Fundo" fill className="object-cover" sizes="400px" /> : <Upload className="w-6 h-6 text-gray-400" />}
+                   {bgImgUrl ? <Image src={`${bgImgUrl}?width=400`} alt="Plano de fundo" fill className="object-cover" sizes="400px" /> : <Upload className="w-6 h-6 text-gray-400" />}
                    <input type="file" accept="image/*" onChange={e => handleStorageUpload(e, 'background')} className="hidden" />
                  </label>
                </div>
-               <div className="pt-2">
-                 <button onClick={copyInviteLink} className="w-full p-3 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 transition">
-                   <LinkIcon className="w-4 h-4 mr-2 text-[#E81633]" /> {copied ? 'Link Copiado!' : 'Copiar Link de Convite'}
-                 </button>
-               </div>
+               
+               {/* VERIFICAÇÃO SE ALGUÉM JÁ ENTROU PELO CONVITE */}
+               {lacoData?.user_invited_id && lacoData?.user_creator_id ? (
+                 <div className="pt-2">
+                   <div className="w-full p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-xl flex items-center justify-center">
+                     <Heart className="w-5 h-5 mr-2 text-[#E81633] animate-pulse" />
+                     <span className="text-sm font-medium text-red-800 dark:text-red-200">
+                       {partnerName ? `Conectado(a) com ${partnerName}` : 'Seu amor já está conectado a este Laço!'}
+                     </span>
+                   </div>
+                 </div>
+               ) : (
+                 <div className="pt-2">
+                   <button onClick={copyInviteLink} className="w-full p-3 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 transition">
+                     <LinkIcon className="w-4 h-4 mr-2 text-[#E81633]" /> {copied ? 'Link Copiado!' : 'Copiar Link de Convite'}
+                   </button>
+                 </div>
+               )}
+
                <button onClick={handleSaveSettings} className="w-full py-3 bg-[#E81633] hover:bg-[#c2122a] text-white rounded-xl font-bold transition">Salvar Configurações</button>
              </div>
            </div>
