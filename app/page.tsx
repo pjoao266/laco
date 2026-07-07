@@ -114,7 +114,7 @@ export default function LacoHome() {
       
       {lacoData?.background_img_link && (
         <div 
-          className="fixed inset-0 z-0 opacity-10 dark:opacity-20 pointer-events-none bg-cover bg-center"
+          className="fixed inset-0 z-0 opacity-10 dark:opacity-[0.15] pointer-events-none bg-cover bg-center bg-fixed bg-no-repeat"
           style={{ backgroundImage: `url(${lacoData.background_img_link})` }}
         />
       )}
@@ -266,23 +266,46 @@ export default function LacoHome() {
       </button>
 
       {/* POPUP NO MODO NOTURNO */}
+      {/* POPUP DO EVENTO SELECIONADO (CORRIGIDO) */}
       {selectedEvent && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative border border-transparent dark:border-slate-700 animate-in zoom-in-95 duration-200">
-            <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 p-2 bg-white/50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md rounded-full text-gray-800 dark:text-white transition z-10 shadow-sm">
+        <div 
+          onClick={() => setSelectedEvent(null)} // <-- REGRA 1: Fecha se clicar no fundo escuro
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} // <-- REGRA 2: Impede que cliques dentro do card fechem o modal
+            className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative border border-transparent dark:border-slate-700 animate-in zoom-in-95 duration-200 cursor-default"
+          >
+            {/* Botão Fechar */}
+            {/* <button 
+              onClick={() => setSelectedEvent(null)} 
+              className="absolute top-4 right-4 p-2 bg-white/50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md rounded-full text-gray-800 dark:text-white transition z-10 shadow-sm"
+            >
               <X className="w-5 h-5" />
-            </button>
+            </button> */}
 
+            {/* Imagem do Modal */}
             {selectedEvent.image_url && (selectedEvent.image_url.startsWith('http://') || selectedEvent.image_url.startsWith('https://')) && !selectedEvent.image_url.includes('photos.app.goo.gl') ? (
-               <img src={selectedEvent.image_url} alt={selectedEvent.title} className="w-full h-72 md:h-80 object-cover object-top" />
+               <div className="relative w-full aspect-square md:aspect-video overflow-hidden bg-black flex items-center justify-center">
+                 <div
+                   className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110"
+                   style={{ backgroundImage: `url(${selectedEvent.image_url})` }}
+                 ></div>
+                 <img 
+                   src={selectedEvent.image_url} 
+                   alt={selectedEvent.title} 
+                   className="relative z-10 w-full h-full object-contain drop-shadow-2xl" 
+                 />
+               </div>
             ) : (
-               <div className={`w-full h-48 flex items-center justify-center ${selectedEvent.catData.color.split(' ')[0]}`}>
+               <div className={`w-full aspect-square md:aspect-video flex items-center justify-center ${selectedEvent.catData.color.split(' ')[0]}`}>
                   {React.createElement(selectedEvent.catData.icon, { 
-                    className: `w-16 h-16 ${selectedEvent.catData.color.split(' ')[1]}` 
+                    className: `w-20 h-20 ${selectedEvent.catData.color.split(' ')[1]}` 
                   })}
                </div>
             )}
 
+            {/* Conteúdo */}
             <div className="p-6">
               <div className="flex items-center space-x-2 mb-3">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${selectedEvent.catData.color}`}>
