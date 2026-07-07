@@ -72,8 +72,8 @@ export default function LacoHome() {
       const { data: catDataDb } = await supabase.from('event_categories').select('*');
       if (catDataDb) setDbCategories(catDataDb);
 
-      const { data: dbEvents } = await supabase.from('timeline_events').select(`id, event_date, title, description, image_url, media_urls, category_id, event_categories (name)`);
-
+      const { data: dbEvents } = await supabase.from('timeline_events').select(`id, laco_id, event_date, title, description, image_url, media_urls, category_id, event_categories (name)`);
+      
       if (dbEvents) {
         const mappedEvents = dbEvents.filter(e => e.laco_id === laco.id || !e.laco_id).map((e: any) => {
           const catData = Array.isArray(e.event_categories) ? e.event_categories[0] : e.event_categories;
@@ -274,11 +274,12 @@ export default function LacoHome() {
                 <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-600 before:to-transparent">
                   {filteredEvents.map((event) => {
                     const catData = CATEGORIES.find(c => c.id === event.categoryId) || CATEGORIES[0];
+                    const Icon = catData.icon || Heart; // <--- ADICIONAMOS ISTO AQUI
                     const dateObj = new Date(event.date + 'T12:00:00');
                     return (
                       <div key={event.id} onClick={() => { setSelectedEvent({...event, catData}); setIsEditingEvent(false); }} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group cursor-pointer">
                         <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${catData.color} absolute left-0 md:left-1/2 md:-ml-5 z-10 transition-transform group-hover:scale-110`}>
-                          <catData.icon className="w-4 h-4" />
+                          <Icon className="w-4 h-4" /> {/* <--- USAMOS O Icon SEGURO AQUI */}
                         </div>
                         <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border border-gray-100 dark:border-slate-700/50 bg-gray-50 dark:bg-slate-700/30 hover:bg-white dark:hover:bg-slate-700 transition">
                           {event.media_urls && event.media_urls.length > 0 && (
@@ -391,9 +392,10 @@ export default function LacoHome() {
                 <div className="space-y-4">
                   {futureMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários futuros.</p> : futureMilestones.map((m, i) => {
                     const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
+                    const Icon = catData.icon || Heart; // <--- ADICIONAMOS ISTO AQUI
                     return (
                       <div key={i} className="flex items-start p-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><catData.icon className="w-5 h-5" /></div>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div> 
                         <div>
                           <p className="text-xs font-bold text-[#E81633] uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
@@ -414,9 +416,10 @@ export default function LacoHome() {
                 <div className="space-y-4">
                   {pastMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários passados.</p> : pastMilestones.map((m, i) => {
                     const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
+                    const Icon = catData.icon || Heart; // <--- ADICIONAMOS ISTO AQUI
                     return (
                       <div key={i} className="flex items-start p-2 rounded-2xl opacity-70 hover:opacity-100 transition">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><catData.icon className="w-5 h-5" /></div>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div> {/* <--- USAMOS O Icon AQUI */}
                         <div>
                           <p className="text-xs font-bold text-gray-500 uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
@@ -523,7 +526,7 @@ export default function LacoHome() {
                 </>
               ) : (
                  <div className={`w-full h-full flex items-center justify-center ${selectedEvent.catData.color.split(' ')[0]}`}>
-                   <selectedEvent.catData.icon className={`w-20 h-20 ${selectedEvent.catData.color.split(' ')[1]}`} />
+                   {React.createElement(selectedEvent.catData.icon || Heart, { className: `w-20 h-20 ${selectedEvent.catData.color.split(' ')[1]}` })}
                  </div>
               )}
             </div>
