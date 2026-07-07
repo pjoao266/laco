@@ -12,25 +12,42 @@ export default function Login() {
     // Escuta a sessão do Supabase para capturar o usuário assim que ele voltar do Google
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const user = session.user
-        const params = new URLSearchParams(window.location.search)
-        const inviteLacoId = params.get('invite')
+        const user = session.user;
+        const params = new URLSearchParams(window.location.search);
+        const inviteLacoId = params.get('invite');
 
         if (inviteLacoId) {
-          // Vincula a pessoa convidada à coluna user_invited_id da tabela lacos
+          // Fluxo de Convite: Vincula a pessoa convidada à coluna user_invited_id da tabela lacos
           await supabase
             .from('lacos')
             .update({ user_invited_id: user.id })
-            .eq('id', inviteLacoId)
+            .eq('id', inviteLacoId);
+          
+          // Se ela usou o convite, vai direto para a home
+          router.push('/');
+        } else {
+          // Fluxo Novo: Se não usou convite, verifica se já está vinculada a algum laço
+          const { data: laco, error: lacoError } = await supabase
+            .from('lacos')
+            .select('id')
+            .or(`user_creator_id.eq.${user.id},user_invited_id.eq.${user.id}`)
+            .maybeSingle();
+
+          if (!laco || lacoError) {
+            // Se não tiver laço e não usou convite, vai para o ONBOARDING (Criação de Laço)
+            router.push('/onboarding');
+          } else {
+            // Se já tiver laço, vai direto para a home
+            router.push('/');
+          }
         }
-        router.push('/')
       }
-    })
+    });
 
     return () => {
-      authListener.subscription.unsubscribe()
-    }
-  }, [router])
+      authListener.subscription.unsubscribe();
+    };
+  }, [router]);
 
   async function handleGoogleAuth() {
     setLoading(true)

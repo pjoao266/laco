@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { 
   Heart, Ticket, Gift, Plane, PawPrint, 
-  Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Plus, X, MoreHorizontal, Link as LinkIcon, Upload, Edit, Save
+  Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Plus, X, MoreHorizontal, Link as LinkIcon, Upload, Edit, Save, Trash2
 } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
 import Navbar from './components/Navbar';
@@ -29,6 +29,7 @@ export default function LacoHome() {
   const [isLoading, setIsLoading] = useState(true);
   const [lacoData, setLacoData] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
+  const [dbCategories, setDbCategories] = useState<any[]>([]);
 
   // Modais de Controle
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
@@ -44,7 +45,7 @@ export default function LacoHome() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDesc, setEventDesc] = useState('');
   const [eventDate, setEventDate] = useState('');
-  const [eventCat, setEventCat] = useState('outros');
+  const [eventCatId, setEventCatId] = useState(''); // Usa o UUID real do banco
   const [eventImgUrl, setEventImgUrl] = useState('');
 
   // Form de Configuração do Laço
@@ -61,7 +62,7 @@ export default function LacoHome() {
         return;
       }
 
-      const { data: laco, error: lacoError } = await supabase
+      const { data: laco } = await supabase
         .from('lacos')
         .select('*')
         .or(`user_creator_id.eq.${user.id},user_invited_id.eq.${user.id}`)
@@ -76,9 +77,16 @@ export default function LacoHome() {
       setShipName(laco.ship_name || '');
       setBgImgUrl(laco.background_img_link || '');
 
-      const { data: dbEvents, error: eventsError } = await supabase
+      // Busca as categorias reais do banco (UUIDs)
+      const { data: catDataDb } = await supabase.from('event_categories').select('*');
+      if (catDataDb) {
+        setDbCategories(catDataDb);
+      }
+
+      // Busca os eventos
+      const { data: dbEvents } = await supabase
         .from('timeline_events')
-        .select(`id, event_date, title, description, image_url, event_categories (name)`)
+        .select(`id, event_date, title, description, image_url, category_id, event_categories (name)`)
         .eq('laco_id', laco.id);
 
       if (dbEvents) {
@@ -100,7 +108,8 @@ export default function LacoHome() {
             title: e.title,
             description: e.description || "",
             image_url: e.image_url, 
-            categoryId: frontendCatId
+            categoryId: frontendCatId,
+            rawCategoryId: e.category_id // Guarda o UUID real para a edição
           };
         });
         setEvents(mappedEvents);
@@ -115,7 +124,6 @@ export default function LacoHome() {
     carregarDados();
   }, [router]);
 
-  // Upload Otimizado para Supabase Storage
   const handleStorageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'event' | 'background') => {
     try {
       if (!e.target.files || e.target.files.length === 0) return;
@@ -143,54 +151,79 @@ export default function LacoHome() {
     }
   };
 
+
   const handleSaveEvent = async () => {
-    if (!eventTitle || !eventDate) {
-      alert('Título e Data são obrigatórios.');
+    // 1. Garantir que temos o usuário autenticado (isso deve estar no topo do arquivo ou função)
+    const { data: userData, error: authError } = await supabase.auth.getUser();
+    const user = userData?.user;
+
+    if (authError || !user) {
+      alert('Falha na autenticação ou usuário não encontrado. Por favor, faça login novamente.');
       return;
     }
 
-    const catMapping: any = { marco: 1, role: 2, presente: 3, viagem: 4, pet: 5, outros: 6 };
-    const categoryDbId = catMapping[eventCat] || 6;
+    // 2. Validações: Impedir campos vazios (Crucial!)
+    if (!eventTitle || !eventDate || !eventCatId) {
+      alert('Título, Data e Categoria são obrigatórios!'); // Alerta universal de fallback
+      return;
+    }
 
-    if (isEditingEvent && selectedEvent) {
-      const { error } = await supabase
-        .from('timeline_events')
-        .update({
-          title: eventTitle,
-          description: eventDesc,
-          event_date: eventDate,
-          category_id: categoryDbId,
-          image_url: eventImgUrl
-        })
-        .eq('id', selectedEvent.id);
-      if (error) alert(error.message);
-    } else {
-      const { error } = await supabase
-        .from('timeline_events')
-        .insert([{
+    // 3. Usar o ID do usuário na inserção
+    const { data, error: insertError } = await supabase
+      .from('timeline_events')
+      .insert([
+        {
           laco_id: lacoData.id,
           title: eventTitle,
           description: eventDesc,
           event_date: eventDate,
-          category_id: categoryDbId,
-          image_url: eventImgUrl
-        }]);
-      if (error) alert(error.message);
-    }
+          category_id: eventCatId, // UUID real do banco
+          image_url: eventImgUrl,
+          created_by: user.id, // <--- ADICIONAR ESTA LINHA COM O ID DO USUÁRIO
+        },
+      ]);
 
-    setIsNewEventOpen(false);
-    setIsEditingEvent(false);
-    setSelectedEvent(null);
-    carregarDados();
+    if (insertError) {
+      alert("Erro ao salvar: " + insertError.message);
+    } else {
+      // ... fechar modal, recarregar dados ...
+      setIsNewEventOpen(false);
+      setIsEditingEvent(false);
+      setSelectedEvent(null);
+      carregarDados(); // Discutimos isso antes
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!selectedEvent) return;
+    
+    const confirmDelete = window.confirm("Tem a certeza que deseja excluir esta memória? Esta ação não pode ser desfeita.");
+    if (!confirmDelete) return;
+
+    const { error } = await supabase
+      .from('timeline_events')
+      .delete()
+      .eq('id', selectedEvent.id);
+
+    if (error) {
+      alert("Erro ao excluir: " + error.message);
+    } else {
+      setIsEditingEvent(false);
+      setSelectedEvent(null);
+      carregarDados();
+    }
   };
 
   const handleSaveSettings = async () => {
+
+    if (!shipName || shipName.trim() === '') {
+      alert('O nome do casal/espaço não pode estar vazio. Por favor, digite um nome.');
+      return; // Interrompe a execução da função e impede o salvamento
+    }
+    
     const { error } = await supabase
       .from('lacos')
-      .update({
-        ship_name: shipName,
-        background_img_link: bgImgUrl
-      })
+      .update({ ship_name: shipName, background_img_link: bgImgUrl })
       .eq('id', lacoData.id);
 
     if (error) alert(error.message);
@@ -210,7 +243,7 @@ export default function LacoHome() {
     setEventTitle(event.title);
     setEventDesc(event.description);
     setEventDate(event.date);
-    setEventCat(event.categoryId);
+    setEventCatId(event.rawCategoryId || (dbCategories.length > 0 ? dbCategories[0].id : ''));
     setEventImgUrl(event.image_url || '');
     setIsEditingEvent(true);
   };
@@ -219,7 +252,7 @@ export default function LacoHome() {
     setEventTitle('');
     setEventDesc('');
     setEventDate(new Date().toISOString().split('T')[0]);
-    setEventCat('outros');
+    setEventCatId(dbCategories.length > 0 ? dbCategories[0].id : '');
     setEventImgUrl('');
     setIsEditingEvent(false);
     setIsNewEventOpen(true);
@@ -245,16 +278,9 @@ export default function LacoHome() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col font-sans relative transition-colors">
       
-      {/* Otimização da Imagem de Fundo (Next/Image com Fill) */}
       {lacoData?.background_img_link && (
         <div className="fixed inset-0 z-0 opacity-10 dark:opacity-[0.15] pointer-events-none">
-          <Image 
-            src={lacoData.background_img_link}
-            alt="Fundo"
-            fill
-            className="object-cover object-center"
-            priority
-          />
+          <Image src={lacoData.background_img_link} alt="Fundo" fill className="object-cover object-center" priority sizes="100vw" />
         </div>
       )}
 
@@ -318,9 +344,7 @@ export default function LacoHome() {
                       </div>
                       <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border border-gray-100 dark:border-slate-700/50 bg-gray-50 dark:bg-slate-700/30 hover:bg-white dark:hover:bg-slate-700 hover:shadow-md hover:border-[#E81633]/30 transition">
                         <div className="flex items-center justify-between mb-1">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${catData.color}`}>
-                            {catData.name}
-                          </span>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${catData.color}`}>{catData.name}</span>
                           <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                             {String(dateObj.getDate()).padStart(2, '0')} {monthNames[dateObj.getMonth()].substring(0,3)}
                             {isPreviousYear && ` ${eventYear}`}
@@ -385,7 +409,7 @@ export default function LacoHome() {
         <Plus className="w-6 h-6" />
       </button>
 
-      {/* MODAL 1: VISUALIZAÇÃO E EDIÇÃO */}
+      {/* MODAL 1: VISUALIZAÇÃO E EDIÇÃO (COM BOTÃO DE EXCLUIR) */}
       {selectedEvent && (
         <div onClick={() => { if(!isEditingEvent) setSelectedEvent(null); }} className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in cursor-pointer">
           <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative border border-transparent dark:border-slate-700 animate-in zoom-in-95 duration-200 cursor-default max-h-[90vh] overflow-y-auto">
@@ -412,8 +436,8 @@ export default function LacoHome() {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Categoria</label>
-                    <select value={eventCat} onChange={e => setEventCat(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white text-sm outline-none">
-                      {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                    <select value={eventCatId} onChange={e => setEventCatId(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white text-sm outline-none">
+                      {dbCategories.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
@@ -433,15 +457,22 @@ export default function LacoHome() {
                     <input type="file" accept="image/*" onChange={e => handleStorageUpload(e, 'event')} className="hidden" />
                   </label>
                 </div>
-                <button onClick={handleSaveEvent} className="w-full py-3 bg-[#E81633] text-white rounded-xl font-bold flex items-center justify-center shadow-md hover:bg-[#c2122a] transition mt-2">
-                  <Save className="w-4 h-4 mr-2" /> Salvar Alterações
-                </button>
+                
+                {/* Botões Salvar e Excluir */}
+                <div className="flex space-x-2 mt-2 pt-2">
+                  <button onClick={handleDeleteEvent} title="Excluir Evento" className="w-1/4 py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold flex items-center justify-center shadow-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                  <button onClick={handleSaveEvent} className="w-3/4 py-3 bg-[#E81633] text-white rounded-xl font-bold flex items-center justify-center shadow-md hover:bg-[#c2122a] transition">
+                    <Save className="w-4 h-4 mr-2" /> Salvar Alterações
+                  </button>
+                </div>
               </div>
             ) : (
               <>
                 {selectedEvent.image_url ? (
                   <div className="relative w-full aspect-square md:aspect-video overflow-hidden bg-black flex items-center justify-center">
-                    <Image src={selectedEvent.image_url} alt="Fundo" fill className="object-cover object-center blur-2xl opacity-50 scale-110" />
+                    <Image src={selectedEvent.image_url} alt="Fundo" fill className="object-cover object-center blur-2xl opacity-50 scale-110" sizes="(max-width: 768px) 100vw, 500px" />
                     <Image src={selectedEvent.image_url} alt={selectedEvent.title} fill className="object-contain drop-shadow-2xl z-10" sizes="(max-width: 768px) 100vw, 500px" />
                   </div>
                 ) : (
@@ -494,8 +525,8 @@ export default function LacoHome() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Categoria</label>
-                  <select value={eventCat} onChange={e => setEventCat(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white text-sm outline-none">
-                    {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                  <select value={eventCatId} onChange={e => setEventCatId(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white text-sm outline-none">
+                    {dbCategories.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
@@ -558,7 +589,7 @@ export default function LacoHome() {
                 <p className="text-[11px] text-gray-400 mb-2">Envie este link. Ao se cadastrar, a pessoa será vinculada ao cofre.</p>
                 <button type="button" onClick={copyInviteLink} className="w-full p-3 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl font-medium text-sm text-gray-700 dark:text-gray-300 flex items-center justify-center transition hover:bg-gray-200 dark:hover:bg-slate-700">
                   <LinkIcon className="w-4 h-4 mr-2 text-[#E81633]" />
-                  {copied ? '¡Link Copiado!' : 'Copiar Link de Convite'}
+                  {copied ? 'Link Copiado!' : 'Copiar Link de Convite'}
                 </button>
               </div>
 
