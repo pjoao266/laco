@@ -1,32 +1,59 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/utils/supabase'
 
 export default function Login() {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [erroDetalhado, setErroDetalhado] = useState('')
+
+  useEffect(() => {
+    // Escuta a sessão do Supabase para capturar o usuário assim que ele voltar do Google
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const user = session.user
+        const params = new URLSearchParams(window.location.search)
+        const inviteLacoId = params.get('invite')
+
+        if (inviteLacoId) {
+          // Vincula a pessoa convidada à coluna user_invited_id da tabela lacos
+          await supabase
+            .from('lacos')
+            .update({ user_invited_id: user.id })
+            .eq('id', inviteLacoId)
+        }
+        router.push('/')
+      }
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+  }, [router])
 
   async function handleGoogleAuth() {
     setLoading(true)
     setErroDetalhado('')
 
     try {
+      const params = new URLSearchParams(window.location.search)
+      const inviteLacoId = params.get('invite')
+      
+      // Mantém o parâmetro de convite no redirecionamento de retorno
+      const redirectToUrl = inviteLacoId 
+        ? `${window.location.origin}/login?invite=${inviteLacoId}`
+        : `${window.location.origin}`
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          // O window.location.origin garante que ele volte para http://localhost:3000 
-          // ou para o link oficial quando o site estiver no ar na Vercel
-          redirectTo: `${window.location.origin}` 
-        }
+        options: { redirectTo: redirectToUrl }
       })
 
       if (error) {
         setErroDetalhado('Falha ao conectar com o Google: ' + error.message)
         setLoading(false)
       }
-      // Se der certo, a própria página do Google assume o redirecionamento, 
-      // então não precisamos do setLoading(false) aqui.
-      
     } catch (err) {
       setErroDetalhado('Erro inesperado no sistema.')
       setLoading(false)
@@ -34,49 +61,36 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 w-full max-w-md text-center">
-        
-        {/* Logo Minimizada do Laço */}
-        <div className="flex justify-center mb-6">
-          <svg viewBox="0 0 813 654" className="h-16 w-auto object-contain">
-            <path fill="#E81633" d="M38.0839 592.487L38.1452 591.979C38.5261 588.639 38.3927 585.367 38.7514 582.056C43.3316 540.235 93.2273 538.421 125.75 542.151C165.795 546.743 202.703 575.016 244.129 562.248C267.21 555.134 284.913 539.365 298.338 519.566C302.796 512.992 306.718 502.602 310.228 495.115C315.892 483.302 321.447 471.438 326.892 459.523C328.41 456.207 329.873 452.591 331.499 449.374C346.113 420.456 361.611 375.327 398.491 370.638C385.687 389.782 379.352 403.684 369.107 424.348C354.927 453.204 341.144 482.254 327.763 511.489C322.257 523.033 316.669 534.538 311.002 546.004C306.85 554.312 282.924 595.78 308.15 592.275C323.406 586.558 332.006 572.552 340.93 559.707C346.237 552.069 349.611 543.627 354.435 535.88L354.717 535.434C357.601 529.813 359.677 524.798 362.091 518.963C373.627 491.069 396.752 472.344 425.073 464.111C430.899 462.242 438.104 461.494 444.077 463.032C458.822 468.143 459.913 481.57 458.785 495.085C463.7 485.903 467.843 476.66 472.508 467.436C482.985 468.902 488.07 467.796 497.769 463.396C482.595 489.877 469.921 518.815 455.759 545.925C451.061 554.919 432.254 586.856 445.595 593.326C466.257 590.965 488.032 544.919 497.629 528.094C501.408 520.881 505.787 510.565 510.042 504.196C524.269 482.895 544.857 467.863 570.088 462.672C578.332 461.029 586.383 461.589 593.644 466.146C605.086 473.797 606.48 487.127 599.189 498.398C594.048 506.345 583.062 508.247 577.996 499.119C578.136 495.529 596.761 485.897 591.841 469.775C586.906 462.4 579.265 462.946 571.436 463.763C539.184 473.31 509.437 543.291 516.871 575.206C520.659 591.467 538.325 595.878 552.523 590.757C579.887 580.889 600.86 550.361 612.742 525.195C613.647 523.248 614.5 521.278 615.3 519.286C610.738 504.427 607.716 491.227 615.388 476.517C621.539 464.724 634.791 454.502 647.478 450.792C659.517 447.163 672.51 448.528 683.533 454.579C693.747 460.23 699.75 468.076 703.305 479.158C704.042 480.845 704.225 482.196 705.375 480.353C718.945 439.871 772.01 437.212 790.885 474.647C797.381 487.53 797.43 506.037 792.784 519.524C779.825 553.575 744.536 575.308 713.401 590.843C711.682 591.701 709.234 592.583 707.449 593.256L707.351 593.723C710.957 595.184 716.217 594.572 720.202 594.575C746.005 594.451 772.667 585.919 796.113 575.655C837.364 557.596 879.957 537.022 926.249 540.505C948.451 542.176 972.6 547.124 982.23 569.681C985.942 578.376 984.44 583.106 985.823 591.248L985.289 593.545C984.261 593.068 984.731 593.318 984.029 591.917C974.395 570.457 946.903 564.735 925.752 564.201C913.384 563.848 901.022 565.054 888.957 567.792C836.005 579.621 782.047 616.152 725.838 604.31C713.727 601.758 687.59 586.94 675.785 580.667C652.007 568.031 627.934 547.708 616.531 522.754L616.353 522.357C599.606 553.252 582.753 584.282 546.357 594.432C543.328 595.277 538.881 596.534 536.015 597.602L533.053 596.365C522.528 594.482 511.066 592.402 505.08 582.441C495.604 566.671 493.892 551.509 498.275 533.717L497.1 532.694C494.614 537.651 491.608 542.883 488.676 547.59C478.929 563.236 467.875 587.623 449.4 594.375C447.217 595.204 444.73 595.34 442.442 594.931C423.944 591.625 426.67 569.641 429.108 556.162C426.297 559.584 424.207 564.28 421.725 568.012C414.769 578.469 404.35 592.846 391.119 595.507C377.858 599.499 367.631 590.439 360.965 580.259C353.957 569.555 353.41 553.567 355.757 541.504L354.26 540.982C345.291 557.015 327.567 587.757 309.438 593.661C289.178 599.837 281.138 580.073 283.224 563.515C284.726 551.585 289.551 542.154 294.479 531.361L293.72 529.269C288.672 535.132 283.42 540.998 277.49 546.004C260.312 560.507 234.308 568.707 212.114 570.377C199.515 571.249 186.858 570.77 174.361 568.948C138.219 563.93 99.7678 550.528 64.7379 567.506C54.5497 572.443 44.037 580.278 40.3281 591.444L39.369 593.769L38.7427 593.924L38.0839 592.487Z"/>
-          </svg>
-        </div>
-
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Laço</h1>
-        <p className="text-gray-500 mb-8">Guarde e celebre a história de vocês.</p>
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center p-4 transition-colors">
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-lg border border-gray-100 dark:border-slate-700 w-full max-w-md text-center">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Laço</h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-8">Guarde e celebre a história de vocês.</p>
 
         {erroDetalhado && (
-          <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg mb-6 text-left border border-red-100">
-            <strong>Ops!</strong> {erroDetalhado}
+          <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg mb-6 text-left border border-red-100 dark:border-red-900/30">
+            {erroDetalhado}
           </div>
         )}
 
         <button 
           onClick={handleGoogleAuth}
           disabled={loading}
-          className="w-full bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition shadow-sm disabled:opacity-50"
+          className="w-full bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-600 font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition shadow-sm disabled:opacity-50"
         >
           {loading ? (
             <span className="animate-pulse">Conectando...</span>
           ) : (
             <>
-              {/* Ícone oficial do Google */}
               <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
-              Entrar ou Cadastrar com Google
+              Entrar ou Cadastrar
             </>
           )}
         </button>
-
-        <p className="mt-8 text-xs text-gray-400">
-          Ao entrar, você concorda em criar um cofre seguro para suas memórias.
-        </p>
       </div>
     </div>
   )
