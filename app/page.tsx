@@ -23,8 +23,6 @@ export default function LacoHome() {
   
   const [viewMode, setViewMode] = useState('timeline');
   const [activeCategory, setActiveCategory] = useState('all');
-  
-  // CORREÇÃO 2: Inicializa dinamicamente no mês/ano atual
   const [currentDate, setCurrentDate] = useState(new Date()); 
 
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
@@ -62,13 +60,9 @@ export default function LacoHome() {
           .eq('laco_id', laco.id);
 
         if (dbEvents) {
-          console.log("Dados brutos do banco para depuração:", dbEvents);
-
           const mappedEvents = dbEvents.map((e: any) => {
             const catData = Array.isArray(e.event_categories) ? e.event_categories[0] : e.event_categories;
             const dbCatName = catData?.name;
-            
-            // CORREÇÃO 1: Normalização de strings ultra-indestrutível contra falhas de acentuação/caixa
             const cleanName = dbCatName ? dbCatName.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "";
 
             let frontendCatId = 'outros'; 
@@ -109,106 +103,100 @@ export default function LacoHome() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-sans">
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col items-center justify-center font-sans">
         <Heart className="w-8 h-8 text-[#E81633] animate-pulse" />
       </div>
     );
   }
 
   return (
-      // Adicionamos dark:bg-slate-900 e o texto muda para branco no escuro
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col font-sans relative transition-colors">
-        
-        {/* IMAGEM DE FUNDO DO LAÇO (Com Opacidade Bem Baixa) */}
-        {lacoData?.background_img_link && (
-          <div 
-            className="fixed inset-0 z-0 opacity-10 dark:opacity-5 pointer-events-none bg-cover bg-center"
-            style={{ backgroundImage: `url(${lacoData.background_img_link})` }}
-          />
-        )}
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col font-sans relative transition-colors">
+      
+      {lacoData?.background_img_link && (
+        <div 
+          className="fixed inset-0 z-0 opacity-10 dark:opacity-20 pointer-events-none bg-cover bg-center"
+          style={{ backgroundImage: `url(${lacoData.background_img_link})` }}
+        />
+      )}
 
-        {/* A Navbar fica acima do fundo (z-50 já está nela) */}
-        <Navbar />
+      <Navbar />
 
-        {/* Todo o conteúdo principal recebe z-10 para ficar ACIMA da imagem de fundo */}
-        <div className="flex flex-col items-center py-6 px-4 w-full z-10 relative">
-          <div className="w-full max-w-3xl">
-            
-            <header className="flex justify-between items-center mb-6">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-tight">
-                  {lacoData?.ship_name || 'Laço'}
-                </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Nossa história</p>
-              </div>
-              
-              <div className="bg-gray-200/60 dark:bg-slate-800/80 p-1 rounded-xl flex space-x-1 border border-gray-200 dark:border-slate-700">
-                <button 
-                  onClick={() => setViewMode('timeline')}
-                  className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
-                >
-                  <List className="w-4 h-4 mr-1.5" /> Feed
-                </button>
-                <button 
-                  onClick={() => setViewMode('calendar')}
-                  className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
-                >
-                  <CalendarIcon className="w-4 h-4 mr-1.5" /> Mês
-                </button>
-              </div>
-            </header>
-
-            <div className="flex flex-wrap gap-2 mb-6 p-1">
-              {CATEGORIES.map(cat => {
-                const isActive = activeCategory === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setActiveCategory(cat.id)}
-                    className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition border flex items-center
-                      ${isActive 
-                        ? (cat.id === 'all' ? 'bg-gray-900 dark:bg-white text-white dark:text-slate-900' : cat.color + ' ring-2 ring-offset-2 dark:ring-offset-slate-900 ring-[#E81633]') 
-                        : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
-                  >
-                    {cat.icon && <cat.icon className={`w-4 h-4 mr-1.5 ${isActive && cat.id !== 'all' ? 'opacity-100' : 'opacity-70'}`} />}
-                    {cat.name}
-                  </button>
-                )
-              })}
+      <div className="flex flex-col items-center py-6 px-4 w-full z-10 relative">
+        <div className="w-full max-w-3xl">
+          
+          <header className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-tight">
+                {lacoData?.ship_name || 'Laço'}
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Nossa história</p>
             </div>
-
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 p-4 md:p-6 min-h-[60vh] transition-colors">
             
+            <div className="bg-gray-200/60 dark:bg-slate-800/80 p-1 rounded-xl flex space-x-1 border border-gray-200 dark:border-slate-700">
+              <button 
+                onClick={() => setViewMode('timeline')}
+                className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+              >
+                <List className="w-4 h-4 mr-1.5" /> Feed
+              </button>
+              <button 
+                onClick={() => setViewMode('calendar')}
+                className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+              >
+                <CalendarIcon className="w-4 h-4 mr-1.5" /> Mês
+              </button>
+            </div>
+          </header>
 
+          <div className="flex flex-wrap gap-2 mb-6 p-1">
+            {CATEGORIES.map(cat => {
+              const isActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition border flex items-center
+                    ${isActive 
+                      ? (cat.id === 'all' ? 'bg-gray-900 dark:bg-white text-white dark:text-slate-900' : cat.color + ' ring-2 ring-offset-2 dark:ring-offset-slate-900 ring-[#E81633]') 
+                      : 'bg-white dark:bg-slate-800/60 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
+                >
+                  {cat.icon && <cat.icon className={`w-4 h-4 mr-1.5 ${isActive && cat.id !== 'all' ? 'opacity-100' : 'opacity-70'}`} />}
+                  {cat.name}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* O BLOCO PRINCIPAL (Fundo branco/escuro) */}
+          <div className="bg-white dark:bg-slate-800/80 backdrop-blur-md rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 p-4 md:p-6 min-h-[60vh] transition-colors">
+            
             {viewMode === 'timeline' && (
-              <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 before:to-transparent">
+              <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-slate-600 before:to-transparent">
                 {filteredEvents.map((event) => {
                   const catData = CATEGORIES.find(c => c.id === event.categoryId) || CATEGORIES[0];
                   const Icon = catData.icon || Heart;
                   const dateObj = new Date(event.date + 'T12:00:00');
                   
-                  // COMPARAÇÃO DE ANO: Obtém o ano do evento e o ano atual do sistema
                   const eventYear = dateObj.getFullYear();
                   const currentYear = new Date().getFullYear();
                   const isPreviousYear = eventYear < currentYear;
 
                   return (
                     <div key={event.id} onClick={() => setSelectedEvent({...event, catData})} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group cursor-pointer">
-                      <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${catData.color} absolute left-0 md:left-1/2 md:-ml-5 z-10 transition-transform group-hover:scale-110`}>
+                      <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm ${catData.color} absolute left-0 md:left-1/2 md:-ml-5 z-10 transition-transform group-hover:scale-110`}>
                         <Icon className="w-4 h-4" />
                       </div>
-                      <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-md hover:border-[#E81633]/30 transition">
+                      <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] ml-auto md:ml-0 p-4 rounded-2xl border border-gray-100 dark:border-slate-700/50 bg-gray-50 dark:bg-slate-700/30 hover:bg-white dark:hover:bg-slate-700 hover:shadow-md hover:border-[#E81633]/30 transition">
                         <div className="flex items-center justify-between mb-1">
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${catData.color}`}>
                             {catData.name}
                           </span>
-                          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                          <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                             {String(dateObj.getDate()).padStart(2, '0')} {monthNames[dateObj.getMonth()].substring(0,3)}
-                            {/* Se for um ano anterior, acrescenta o ano com um espaço antes */}
                             {isPreviousYear && ` ${eventYear}`}
                           </span>
                         </div>
-                        <h3 className="font-semibold text-gray-900 mt-2">{event.title}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mt-2">{event.title}</h3>
                       </div>
                     </div>
                   );
@@ -219,18 +207,19 @@ export default function LacoHome() {
             {viewMode === 'calendar' && (
               <div className="animate-in fade-in duration-300">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-800 capitalize">
-                    {monthNames[currentDate.getMonth()]} <span className="text-gray-400 font-normal">{currentDate.getFullYear()}</span>
+                  {/* CORREÇÃO DO TÍTULO DO MÊS NO MODO NOTURNO */}
+                  <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 capitalize">
+                    {monthNames[currentDate.getMonth()]} <span className="text-gray-400 dark:text-gray-500 font-normal">{currentDate.getFullYear()}</span>
                   </h2>
                   <div className="flex space-x-1">
-                    <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-full transition"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
-                    <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-full transition"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+                    <button onClick={prevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition"><ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" /></button>
+                    <button onClick={nextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition"><ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" /></button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-7 gap-1 md:gap-2">
                   {daysOfWeek.map(day => (
-                    <div key={day} className="text-center py-2 text-xs font-medium text-gray-400 uppercase">{day}</div>
+                    <div key={day} className="text-center py-2 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">{day}</div>
                   ))}
                   
                   {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => (
@@ -243,8 +232,10 @@ export default function LacoHome() {
                     const dayEvents = filteredEvents.filter(e => e.date === dateStr);
 
                     return (
-                      <div key={dayNumber} className="min-h-14 md:min-h-24 p-1 md:p-2 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition relative flex flex-col items-center md:items-start">
-                        <span className={`text-xs md:text-sm font-medium ${dayEvents.length > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                      // CORREÇÃO DOS QUADRADOS DOS DIAS NO MODO NOTURNO (Mais suaves e translúcidos)
+                      <div key={dayNumber} className="min-h-14 md:min-h-24 p-1 md:p-2 rounded-xl border border-gray-100 dark:border-slate-700/50 bg-gray-50/50 dark:bg-slate-700/20 hover:bg-white dark:hover:bg-slate-700/60 transition relative flex flex-col items-center md:items-start">
+                        {/* CORREÇÃO DA COR DO NÚMERO DO DIA */}
+                        <span className={`text-xs md:text-sm font-medium ${dayEvents.length > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
                           {dayNumber}
                         </span>
                         
@@ -274,22 +265,18 @@ export default function LacoHome() {
         <Plus className="w-6 h-6" />
       </button>
 
-      {/* POPUP DO EVENTO SELECIONADO */}
+      {/* POPUP NO MODO NOTURNO */}
       {selectedEvent && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
-            <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 p-2 bg-white/50 hover:bg-white backdrop-blur-md rounded-full text-gray-800 transition z-10 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative border border-transparent dark:border-slate-700 animate-in zoom-in-95 duration-200">
+            <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 p-2 bg-white/50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-800 backdrop-blur-md rounded-full text-gray-800 dark:text-white transition z-10 shadow-sm">
               <X className="w-5 h-5" />
             </button>
 
-            {/* CORREÇÃO 4: Fallback inteligente para links de imagem do Google Photos */}
             {selectedEvent.image_url && (selectedEvent.image_url.startsWith('http://') || selectedEvent.image_url.startsWith('https://')) && !selectedEvent.image_url.includes('photos.app.goo.gl') ? (
-              <div className="w-full h-72 md:h-80 bg-gray-900 flex items-center justify-center">
-                <img src={selectedEvent.image_url} alt={selectedEvent.title} className="max-w-full max-h-full object-contain" />
-              </div>
+               <img src={selectedEvent.image_url} alt={selectedEvent.title} className="w-full h-72 md:h-80 object-cover object-top" />
             ) : (
                <div className={`w-full h-48 flex items-center justify-center ${selectedEvent.catData.color.split(' ')[0]}`}>
-                  {/* Renderiza o ícone específico da categoria com tamanho ampliado */}
                   {React.createElement(selectedEvent.catData.icon, { 
                     className: `w-16 h-16 ${selectedEvent.catData.color.split(' ')[1]}` 
                   })}
@@ -301,12 +288,12 @@ export default function LacoHome() {
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${selectedEvent.catData.color}`}>
                   {selectedEvent.catData.name}
                 </span>
-                <span className="text-xs font-bold text-gray-400 uppercase">
+                <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">
                    {new Date(selectedEvent.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 leading-tight mb-2">{selectedEvent.title}</h2>
-              <p className="text-gray-600 text-sm leading-relaxed">{selectedEvent.description}</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white leading-tight mb-2">{selectedEvent.title}</h2>
+              <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{selectedEvent.description}</p>
             </div>
           </div>
         </div>
