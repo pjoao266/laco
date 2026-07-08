@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import { 
   Heart, Ticket, Gift, Plane, PawPrint, Calendar as CalendarIcon, List, 
   ChevronLeft, ChevronRight, Plus, X, MoreHorizontal, Link as LinkIcon, 
-  Upload, Edit, Save, Trash2, Play, Pause, Shuffle, Clock, Camera
+  Upload, Edit, Save, Trash2, Play, Pause, Shuffle, Clock, Camera, Timer, StickyNote
 } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
 import Navbar from './components/Navbar';
@@ -25,20 +26,23 @@ const isVideo = (url: string) => /\.(mp4|webm|ogg|mov)$/i.test(url);
 export default function LacoHome() {
   const router = useRouter();
   
-  const [viewMode, setViewMode] = useState<'timeline' | 'calendar' | 'momentos'>('timeline');
+  const [viewMode, setViewMode] = useState<'timeline' | 'calendar' | 'momentos' | 'contagem'>('timeline');
   const [activeCategory, setActiveCategory] = useState('all');
   const [currentDate, setCurrentDate] = useState(new Date()); 
+  const [tick, setTick] = useState(0); 
 
   const [isLoading, setIsLoading] = useState(true);
   const [lacoData, setLacoData] = useState<any>(null);
   const [partnerName, setPartnerName] = useState<string>('');
   const [events, setEvents] = useState<any[]>([]);
+  const [counters, setCounters] = useState<any[]>([]);
   const [dbCategories, setDbCategories] = useState<any[]>([]);
 
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [isEditingEvent, setIsEditingEvent] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNewEventOpen, setIsNewEventOpen] = useState(false);
+  const [isNewCounterOpen, setIsNewCounterOpen] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -48,6 +52,10 @@ export default function LacoHome() {
   const [eventDate, setEventDate] = useState('');
   const [eventCatId, setEventCatId] = useState(''); 
   const [eventMediaUrls, setEventMediaUrls] = useState<string[]>([]); 
+
+  // Estados para o Contador Personalizado
+  const [counterTitle, setCounterTitle] = useState('');
+  const [selectedEventIdForCounter, setSelectedEventIdForCounter] = useState('');
 
   const [shipName, setShipName] = useState('');
   const [bgImgUrl, setBgImgUrl] = useState('');
@@ -70,7 +78,6 @@ export default function LacoHome() {
       setShipName(laco.ship_name || '');
       setBgImgUrl(laco.background_img_link || '');
 
-      // Buscar nome da parceria se as duas vagas estiverem preenchidas
       if (laco.user_creator_id && laco.user_invited_id) {
         const partnerId = user.id === laco.user_creator_id ? laco.user_invited_id : laco.user_creator_id;
         const { data: profile } = await supabase.from('profiles').select('full_name, name').eq('id', partnerId).maybeSingle();
@@ -81,12 +88,10 @@ export default function LacoHome() {
       if (catDataDb) setDbCategories(catDataDb);
 
       const { data: dbEvents } = await supabase.from('timeline_events').select(`id, laco_id, event_date, title, description, image_url, media_urls, category_id, event_categories (name)`);
-
       if (dbEvents) {
         const mappedEvents = dbEvents.filter(e => e.laco_id === laco.id || !e.laco_id).map((e: any) => {
           const catData = Array.isArray(e.event_categories) ? e.event_categories[0] : e.event_categories;
           const cleanName = catData?.name ? catData.name.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "";
-
           let frontendCatId = 'outros'; 
           if (cleanName.includes('marco')) frontendCatId = 'marco';
           else if (cleanName.includes('presente')) frontendCatId = 'presente';
@@ -97,18 +102,30 @@ export default function LacoHome() {
           let medias = e.media_urls || [];
           if (medias.length === 0 && e.image_url) medias = [e.image_url];
 
-          return {
-            id: e.id, date: e.event_date, title: e.title, description: e.description || "",
-            media_urls: medias, categoryId: frontendCatId, rawCategoryId: e.category_id 
-          };
+          return { id: e.id, date: e.event_date, title: e.title, description: e.description || "", media_urls: medias, categoryId: frontendCatId, rawCategoryId: e.category_id };
         });
         setEvents(mappedEvents);
       }
+
+      // Carrega os contadores salvos no banco de dados!
+      const { data: dbCounters } = await supabase.from('laco_counters').select('*').eq('laco_id', laco.id).order('target_date', { ascending: true });
+      if (dbCounters) setCounters(dbCounters);
+
       setIsLoading(false);
     } catch (err) { console.error(err); }
   }
 
   useEffect(() => { carregarDados(); }, [router]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(prev => prev + 1);
+      if (isPlayingMoments && viewMode === 'momentos' && allMediaFlat.length > 0) {
+        setMomentIndex(prev => (prev + 1) % allMediaFlat.length);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isPlayingMoments, viewMode]);
 
   const handleStorageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'event' | 'background') => {
     try {
@@ -154,6 +171,37 @@ export default function LacoHome() {
     setIsEditingEvent(false); setSelectedEvent(null); carregarDados();
   };
 
+  // Função SALVAR CONTADOR
+  const handleSaveCounter = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) return;
+    
+    if (!counterTitle.trim() || !selectedEventIdForCounter) {
+      return alert('Dê um título e selecione uma memória para acompanhar!');
+    }
+
+    const ev = events.find(e => e.id === selectedEventIdForCounter);
+    if (!ev) return;
+
+    await supabase.from('laco_counters').insert([{
+      laco_id: lacoData.id, 
+      title: counterTitle, // Aqui usamos o título personalizado escolhido pelo usuário
+      target_date: new Date(ev.date + 'T00:00:00').toISOString(), 
+      created_by: userData.user.id
+    }]);
+
+    setIsNewCounterOpen(false); 
+    setCounterTitle('');
+    setSelectedEventIdForCounter('');
+    carregarDados();
+  };
+
+  const handleDeleteCounter = async (id: string) => {
+    if (!window.confirm("Remover este contador?")) return;
+    await supabase.from('laco_counters').delete().eq('id', id);
+    carregarDados();
+  };
+
   const handleSaveSettings = async () => {
     if (!shipName || shipName.trim() === '') return alert('O nome não pode ficar vazio.');
     await supabase.from('lacos').update({ ship_name: shipName, background_img_link: bgImgUrl }).eq('id', lacoData.id);
@@ -188,18 +236,9 @@ export default function LacoHome() {
     return medias;
   }, [events, momentsOrder]);
 
-  useEffect(() => {
-    let interval: any;
-    if (isPlayingMoments && viewMode === 'momentos' && allMediaFlat.length > 0) {
-      interval = setInterval(() => setMomentIndex(prev => (prev + 1) % allMediaFlat.length), 4000);
-    }
-    return () => clearInterval(interval);
-  }, [isPlayingMoments, viewMode, allMediaFlat.length]);
-
-  // LÓGICA DE MESES E ANOS CORRIGIDA E PRECISA
   const { pastMilestones, futureMilestones } = useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Zera as horas para comparar apenas datas
+    today.setHours(0, 0, 0, 0); 
 
     const past: any[] = [];
     const future: any[] = [];
@@ -217,7 +256,6 @@ export default function LacoHome() {
       const eDate = new Date(event.date + 'T00:00:00');
       if (eDate > today) return; 
 
-      // Próximo mesversário/aniversário
       let nextMilestoneDate = new Date(eDate);
       nextMilestoneDate.setFullYear(today.getFullYear());
       nextMilestoneDate.setMonth(today.getMonth());
@@ -226,7 +264,6 @@ export default function LacoHome() {
       }
 
       let totalMonthsNext = (nextMilestoneDate.getFullYear() - eDate.getFullYear()) * 12 + nextMilestoneDate.getMonth() - eDate.getMonth();
-      
       let pastMilestoneDate = new Date(nextMilestoneDate);
       pastMilestoneDate.setMonth(pastMilestoneDate.getMonth() - 1);
       let totalMonthsPast = totalMonthsNext - 1;
@@ -234,15 +271,12 @@ export default function LacoHome() {
       const diffDaysNext = Math.ceil((nextMilestoneDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
       const diffDaysPast = Math.ceil((today.getTime() - pastMilestoneDate.getTime()) / (1000 * 3600 * 24));
 
-      // Algoritmo de Prioridade: Checa se é Ano Fechado e está no raio de +/- 20 dias
       const isPriorityPast = (totalMonthsPast % 12 === 0 && diffDaysPast <= 20);
       const isPriorityNext = (totalMonthsNext % 12 === 0 && diffDaysNext <= 20);
 
-      // Popula Passados
       if (totalMonthsPast > 0 || (totalMonthsPast === 0 && eDate.getTime() !== today.getTime())) {
           past.push({ ...event, anniversaryDate: pastMilestoneDate, diffDays: -diffDaysPast, label: formatDuration(totalMonthsPast), isPriority: isPriorityPast });
       }
-      // Popula Futuros
       future.push({ ...event, anniversaryDate: nextMilestoneDate, diffDays: diffDaysNext, label: formatDuration(totalMonthsNext), isPriority: isPriorityNext });
     });
 
@@ -264,6 +298,25 @@ export default function LacoHome() {
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
 
+  const getLiveCountdown = (targetDateStr: string) => {
+    const target = new Date(targetDateStr);
+    const now = new Date();
+    const isPast = target < now;
+    let diff = Math.abs(now.getTime() - target.getTime());
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / 1000 / 60) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+
+    const years = Math.floor(days / 365);
+    const remainingDaysAfterYears = days % 365;
+    const months = Math.floor(remainingDaysAfterYears / 30);
+    const finalDays = remainingDaysAfterYears % 30;
+
+    return { isPast, years, months, days: finalDays, hours, minutes, seconds };
+  };
+
   if (isLoading) return <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col items-center justify-center"><Heart className="w-8 h-8 text-[#E81633] animate-pulse" /></div>;
 
   return (
@@ -282,17 +335,27 @@ export default function LacoHome() {
           <div className="lg:col-span-2 flex flex-col w-full">
             <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-tight">{lacoData?.ship_name || 'Laço'}</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Nossa história</p>
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-tight flex items-center">
+                  {lacoData?.ship_name || 'Laço'}
+                </h1>
+                <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Nossa história
+                  <span className="mx-2">•</span>
+                  <Link href="/recados" className="flex items-center text-[#E81633] hover:text-[#c2122a] font-medium transition group">
+                    <StickyNote className="w-4 h-4 mr-1 group-hover:-rotate-6 transition-transform" /> 
+                    Mural de Recados
+                  </Link>
+                </div>
               </div>
               <div className="bg-gray-200/60 dark:bg-slate-800/80 p-1 rounded-xl flex space-x-1 border border-gray-200 dark:border-slate-700 w-fit">
                 <button onClick={() => setViewMode('timeline')} className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:hover:text-gray-300'}`}><List className="w-4 h-4 mr-1.5 hidden sm:block" /> Feed</button>
                 <button onClick={() => setViewMode('calendar')} className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:hover:text-gray-300'}`}><CalendarIcon className="w-4 h-4 mr-1.5 hidden sm:block" /> Mês</button>
                 <button onClick={() => { setViewMode('momentos'); setIsPlayingMoments(false); }} className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'momentos' ? 'bg-[#E81633] shadow-sm text-white' : 'text-gray-500 dark:hover:text-gray-300'}`}><Camera className="w-4 h-4 mr-1.5 hidden sm:block" /> Momentos</button>
+                <button onClick={() => setViewMode('contagem')} className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'contagem' ? 'bg-[#E81633] shadow-sm text-white' : 'text-gray-500 dark:hover:text-gray-300'}`}><Timer className="w-4 h-4 mr-1.5 hidden sm:block" /> Contagem</button>
               </div>
             </header>
 
-            {viewMode !== 'momentos' && (
+            {viewMode !== 'momentos' && viewMode !== 'contagem' && (
               <div className="flex flex-wrap gap-2 mb-6 p-1">
                 {CATEGORIES.map(cat => (
                   <button key={cat.id} onClick={() => setActiveCategory(cat.id)} className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition border flex items-center ${activeCategory === cat.id ? (cat.id === 'all' ? 'bg-gray-900 dark:bg-white text-white dark:text-slate-900' : cat.color + ' ring-2 ring-offset-2 ring-[#E81633]') : 'bg-white dark:bg-slate-800/60 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700'}`}>
@@ -410,62 +473,121 @@ export default function LacoHome() {
                   </div>
                 </div>
               )}
+
+              {/* VISTA 4: CONTAGEM DE TEMPO */}
+              {viewMode === 'contagem' && (
+                <div className="animate-in fade-in duration-300">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Seus Contadores</h2>
+                    <button onClick={() => { setCounterTitle(''); setSelectedEventIdForCounter(''); setIsNewCounterOpen(true); }} className="px-4 py-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-800 dark:text-white rounded-xl text-sm font-semibold flex items-center transition">
+                      <Plus className="w-4 h-4 mr-1" /> Novo Contador
+                    </button>
+                  </div>
+                  
+                  {counters.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Timer className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>Nenhuma contagem ativa. Crie uma para começar!</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {counters.map(counter => {
+                        const countdown = getLiveCountdown(counter.target_date);
+                        return (
+                          <div key={counter.id} className="relative bg-gradient-to-br from-gray-900 to-slate-800 p-6 rounded-3xl shadow-md border border-slate-700 overflow-hidden group">
+                            <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#E81633]/20 rounded-full blur-2xl pointer-events-none" />
+                            <button onClick={() => handleDeleteCounter(counter.id)} className="absolute top-4 right-4 p-1.5 bg-black/30 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition"><Trash2 className="w-4 h-4" /></button>
+
+                            <p className="text-[#E81633] text-xs font-bold uppercase tracking-wider mb-1">
+                              {countdown.isPast ? 'Já passamos de' : 'Faltam para'}
+                            </p>
+                            <h3 className="text-xl font-bold text-white mb-4 pr-6">{counter.title}</h3>
+                            
+                            <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                              <div className="bg-black/30 rounded-xl py-2">
+                                <p className="text-2xl font-bold text-white">{countdown.years}</p>
+                                <p className="text-[10px] text-gray-400 uppercase font-semibold">Anos</p>
+                              </div>
+                              <div className="bg-black/30 rounded-xl py-2">
+                                <p className="text-2xl font-bold text-white">{countdown.months}</p>
+                                <p className="text-[10px] text-gray-400 uppercase font-semibold">Meses</p>
+                              </div>
+                              <div className="bg-black/30 rounded-xl py-2">
+                                <p className="text-2xl font-bold text-white">{countdown.days}</p>
+                                <p className="text-[10px] text-gray-400 uppercase font-semibold">Dias</p>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-center items-center space-x-2 bg-black/20 rounded-xl p-3">
+                               <Clock className="w-4 h-4 text-gray-400" />
+                               <span className="text-lg font-mono font-bold text-white tracking-widest">
+                                 {String(countdown.hours).padStart(2, '0')}:{String(countdown.minutes).padStart(2, '0')}:{String(countdown.seconds).padStart(2, '0')}
+                               </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           {/* CAIXA LATERAL - COM SCROLL INDEPENDENTE */}
-          <div className="lg:col-span-1">
-            {/* O max-h-[calc(100vh-7rem)] e overflow-y-auto ativam o scroll isolado nesta caixa */}
-            <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto scrollbar-hide space-y-8">
-              
-              <div>
-                <div className="flex items-center mb-4">
-                  <div className="p-2 bg-pink-50 dark:bg-pink-900/20 rounded-xl mr-3"><Gift className="w-5 h-5 text-pink-500" /></div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Chegando em Breve</h3>
-                </div>
-                <div className="space-y-4">
-                  {futureMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários futuros.</p> : futureMilestones.map((m, i) => {
-                    const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
-                    const Icon = catData.icon || Heart;
-                    return (
-                      <div key={i} onClick={() => { setSelectedEvent({...m, catData}); setIsEditingEvent(false); }} className="flex items-start cursor-pointer p-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div>
-                        <div>
-                          <p className="text-xs font-bold text-[#E81633] uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
-                          <p className="text-xs text-gray-500 mt-1">{m.diffDays === 0 ? '✨ É HOJE!' : `Faltam ${m.diffDays} dias`}</p>
+          {viewMode !== 'contagem' && (
+            <div className="lg:col-span-1">
+              <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto scrollbar-hide space-y-8">
+                
+                <div>
+                  <div className="flex items-center mb-4">
+                    <div className="p-2 bg-pink-50 dark:bg-pink-900/20 rounded-xl mr-3"><Gift className="w-5 h-5 text-pink-500" /></div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Chegando em Breve</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {futureMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários futuros.</p> : futureMilestones.map((m, i) => {
+                      const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
+                      const Icon = catData.icon || Heart;
+                      return (
+                        <div key={i} onClick={() => { setSelectedEvent({...m, catData}); setIsEditingEvent(false); }} className="flex items-start cursor-pointer p-2 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div>
+                          <div>
+                            <p className="text-xs font-bold text-[#E81633] uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
+                            <p className="text-xs text-gray-500 mt-1">{m.diffDays === 0 ? '✨ É HOJE!' : `Faltam ${m.diffDays} dias`}</p>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <div className="flex items-center mb-4">
-                  <div className="p-2 bg-gray-100 dark:bg-slate-700 rounded-xl mr-3"><Clock className="w-5 h-5 text-gray-500" /></div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Aconteceu Recentemente</h3>
-                </div>
-                <div className="space-y-4">
-                  {pastMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários passados.</p> : pastMilestones.map((m, i) => {
-                    const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
-                    const Icon = catData.icon || Heart;
-                    return (
-                      <div key={i} onClick={() => { setSelectedEvent({...m, catData}); setIsEditingEvent(false); }} className="flex items-start cursor-pointer p-2 rounded-2xl opacity-70 hover:opacity-100 transition">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-500 uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
-                          <p className="text-xs text-gray-500 mt-1">Há {Math.abs(m.diffDays)} dias</p>
+                <div>
+                  <div className="flex items-center mb-4">
+                    <div className="p-2 bg-gray-100 dark:bg-slate-700 rounded-xl mr-3"><Clock className="w-5 h-5 text-gray-500" /></div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Aconteceu Recentemente</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {pastMilestones.length === 0 ? <p className="text-sm text-gray-500 italic">Sem aniversários passados.</p> : pastMilestones.map((m, i) => {
+                      const catData = CATEGORIES.find(c => c.id === m.categoryId) || CATEGORIES[0];
+                      const Icon = catData.icon || Heart;
+                      return (
+                        <div key={i} onClick={() => { setSelectedEvent({...m, catData}); setIsEditingEvent(false); }} className="flex items-start cursor-pointer p-2 rounded-2xl opacity-70 hover:opacity-100 transition">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mr-3 ${catData.color.split(' ')[0]} ${catData.color.split(' ')[1]}`}><Icon className="w-5 h-5" /></div>
+                          <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase">{String(m.anniversaryDate.getDate()).padStart(2, '0')} {monthNames[m.anniversaryDate.getMonth()]}</p>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{m.label} de "{m.title}"</p>
+                            <p className="text-xs text-gray-500 mt-1">Há {Math.abs(m.diffDays)} dias</p>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
 
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -473,7 +595,36 @@ export default function LacoHome() {
         <Plus className="w-6 h-6" />
       </button>
 
-      {/* MODAL 1: CRIAR / EDITAR */}
+      {/* MODAL NOVO CONTADOR */}
+      {isNewCounterOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
+           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl p-6 relative border border-transparent dark:border-slate-700">
+             <button onClick={() => setIsNewCounterOpen(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-full"><X className="w-5 h-5" /></button>
+             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Novo Contador</h2>
+             <p className="text-sm text-gray-500 mb-6">Acompanhe cada segundo de um momento especial escolhendo uma memória.</p>
+             <div className="space-y-4">
+               <div>
+                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Título do Contador</label>
+                 <input type="text" placeholder="Ex: Tempo de Namoro, Faltam para a viagem..." value={counterTitle} onChange={e => setCounterTitle(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-[#E81633]" />
+               </div>
+               <div>
+                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Selecione a Memória Base</label>
+                 <select value={selectedEventIdForCounter} onChange={e => setSelectedEventIdForCounter(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-[#E81633]">
+                    <option value="">Escolher memória...</option>
+                    {events.map(ev => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.title} ({new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')})
+                      </option>
+                    ))}
+                 </select>
+               </div>
+               <button onClick={handleSaveCounter} className="w-full py-3 mt-4 bg-[#E81633] text-white rounded-xl font-bold hover:bg-[#c2122a] transition shadow-md">Salvar Contador</button>
+             </div>
+           </div>
+        </div>
+      )}
+
+      {/* MODAL 1: CRIAR / EDITAR EVENTO */}
       {(isNewEventOpen || isEditingEvent) && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl p-6 relative border border-transparent dark:border-slate-700 max-h-[90vh] overflow-y-auto scrollbar-hide">
@@ -578,7 +729,7 @@ export default function LacoHome() {
         </div>
       )}
 
-      {/* MODAL 3: CONFIGURAÇÕES COM CHECAGEM DE PARCEIRO */}
+      {/* MODAL 3: CONFIGURAÇÕES */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md p-6 relative border border-gray-100 dark:border-slate-700">
@@ -597,7 +748,6 @@ export default function LacoHome() {
                  </label>
                </div>
                
-               {/* VERIFICAÇÃO SE ALGUÉM JÁ ENTROU PELO CONVITE */}
                {lacoData?.user_invited_id && lacoData?.user_creator_id ? (
                  <div className="pt-2">
                    <div className="w-full p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-xl flex items-center justify-center">
